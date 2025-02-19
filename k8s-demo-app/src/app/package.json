@@ -1,0 +1,16 @@
+{
+  "name": "k8s-demo-app",
+  "version": "1.0.0",
+  "description": "Sample Kubernetes Demo Application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

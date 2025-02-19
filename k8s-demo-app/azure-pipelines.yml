@@ -1,0 +1,80 @@
+trigger:
+  branches:
+    include:
+    - main
+    - feature/*
+  paths:
+    include:
+    - src/*
+    - kubernetes/*
+
+variables:
+  dockerRegistryServiceConnection: 'acr-service-connection'
+  imageRepository: 'demo-app'
+  containerRegistry: 'yourregistry.azurecr.io'
+  dockerfilePath: '$(Build.SourcesDirectory)/src/app/Dockerfile'
+  tag: '$(Build.BuildId)'
+  vmImageName: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  displayName: Build and push stage
+  jobs:  
+  - job: Build
+    displayName: Build job
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+    - task: Docker@2
+      displayName: Build and push an image to container registry
+      inputs:
+        command: buildAndPush
+        repository: $(imageRepository)
+        dockerfile: $(dockerfilePath)
+        containerRegistry: $(dockerRegistryServiceConnection)
+        tags: |
+          $(tag)
+          latest
+
+    - task: CopyFiles@2
+      inputs:
+        Contents: 'kubernetes/**'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'manifests'
+        publishLocation: 'Container'
+
+- stage: Deploy
+  displayName: Deploy to Dev
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - deployment: Deploy
+    displayName: Deploy to AKS
+    environment: 'development'
+    pool:
+      vmImage: $(vmImageName)
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: DownloadBuildArtifacts@0
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: 'manifests'
+              downloadPath: '$(System.ArtifactsDirectory)'
+
+          - task: KubernetesManifest@0
+            inputs:
+              action: 'deploy'
+              kubernetesServiceConnection: 'dev-aks-connection'
+              namespace: 'default'
+              manifests: |
+                $(System.ArtifactsDirectory)/manifests/kubernetes/deployment.yml
+                $(System.ArtifactsDirectory)/manifests/kubernetes/service.yml
+              containers: |
+                $(containerRegistry)/$(imageRepository):$(tag)
